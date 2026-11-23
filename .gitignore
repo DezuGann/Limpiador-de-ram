@@ -1,0 +1,16 @@
+# Binarios temporales y respaldos
+*.old.exe
+*.old2.exe
+*.tmp
+*.log
+
+# Archivos de depuración y usuario
+.vs/
+*.user
+*.suo
+*.pdb
+
+# Archivos de sistema operativo
+Thumbs.db
+Desktop.ini
+.DS_Store
