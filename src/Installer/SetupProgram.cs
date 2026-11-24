@@ -284,6 +284,32 @@ namespace LimpiadorRAM.Installer
                 return;
             }
 
+            try
+            {
+                installDir = Path.GetFullPath(installDir);
+                string root = Path.GetPathRoot(installDir);
+                string winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+                string progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+
+                // Seguridad: Validar que no se instale directamente en la raíz de un disco o carpetas críticas del sistema
+                if (string.Equals(installDir.TrimEnd('\\', '/'), root.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
+                {
+                    MessageBox.Show("Por seguridad, no se puede instalar directamente en la raíz de una unidad (ej. C:\\ o D:\\).\nPor favor especifica una subcarpeta.", "Ruta no permitida", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                if (!string.IsNullOrEmpty(winDir) && installDir.StartsWith(winDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    MessageBox.Show("Por seguridad, no se puede instalar dentro del directorio de Windows.", "Ruta no permitida", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ruta no válida: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             _btnInstall.Enabled = false;
             _btnBrowse.Enabled = false;
             _txtPath.Enabled = false;
@@ -323,7 +349,7 @@ namespace LimpiadorRAM.Installer
                 ExtractResource("Payload.panda_clean.png", Path.Combine(resDir, "panda_clean.png"));
                 ExtractResource("Payload.watermark_bg.jpg", Path.Combine(resDir, "watermark_bg.jpg"));
 
-                // 4. Crear desinstalador
+                // 4. Crear desinstalador seguro
                 _lblStatus.Text = "Configurando desinstalador...";
                 _progressBar.Value = 70;
                 Application.DoEvents();
@@ -339,8 +365,10 @@ namespace LimpiadorRAM.Installer
                     "del /f /q \"" + Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Limpiador de RAM.lnk") + "\" >nul 2>&1\r\n" +
                     "del /f /q \"" + Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "Limpiador de RAM.lnk") + "\" >nul 2>&1\r\n" +
                     "timeout /t 1 >nul 2>&1\r\n" +
-                    "cd ..\r\n" +
-                    "rmdir /s /q \"" + installDir + "\" >nul 2>&1\r\n" +
+                    "if exist \"%~dp0LimpiadorRAM.exe\" (\r\n" +
+                    "    cd /d \"%~dp0..\"\r\n" +
+                    "    rmdir /s /q \"%~dp0\" >nul 2>&1\r\n" +
+                    ")\r\n" +
                     "echo Desinstalacion completada con exito.\r\n" +
                     "pause\r\n";
                 File.WriteAllText(uninstallerCmd, uninstContent);

@@ -220,11 +220,20 @@ namespace LimpiadorRAM
             Process[] processes = Process.GetProcesses();
             int optimized = 0;
             int skipped = 0;
+            int currentPid = 0;
+            try { currentPid = Process.GetCurrentProcess().Id; } catch { }
 
             foreach (Process proc in processes)
             {
                 try
                 {
+                    // Omitir procesos de sistema raíz (System, Idle) y nuestro propio proceso
+                    if (proc.Id <= 4 || proc.Id == currentPid)
+                    {
+                        skipped++;
+                        continue;
+                    }
+
                     // Procesos del sistema protegidos generarán excepción al leer Handle
                     IntPtr handle = proc.Handle;
                     if (handle != IntPtr.Zero)
@@ -268,7 +277,6 @@ namespace LimpiadorRAM
                 if (!string.IsNullOrEmpty(windir))
                 {
                     paths.Add(Path.Combine(windir, "Temp"));
-                    paths.Add(Path.Combine(windir, "Prefetch"));
                 }
             }
             catch { }
@@ -308,11 +316,24 @@ namespace LimpiadorRAM
             try
             {
                 DirectoryInfo dir = new DirectoryInfo(dirPath);
+
+                // Seguridad: Si el directorio en sí es un reparse point / junction, abortar para no salir de Temp
+                if ((dir.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    return;
+                }
+
                 FileInfo[] files = dir.GetFiles();
                 foreach (FileInfo file in files)
                 {
                     try
                     {
+                        // Omitir archivos que sean symlinks
+                        if ((file.Attributes & FileAttributes.ReparsePoint) != 0)
+                        {
+                            continue;
+                        }
+
                         long len = file.Length;
                         file.Delete();
                         deletedFiles++;
@@ -329,6 +350,12 @@ namespace LimpiadorRAM
                 {
                     try
                     {
+                        // Seguridad: Prevenir Directory Traversal mediante NTFS Junctions o Symlinks
+                        if ((sub.Attributes & FileAttributes.ReparsePoint) != 0)
+                        {
+                            continue;
+                        }
+
                         CleanDirectory(sub.FullName, ref deletedFiles, ref deletedBytes);
                         if (sub.GetFiles().Length == 0 && sub.GetDirectories().Length == 0)
                         {
