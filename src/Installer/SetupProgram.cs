@@ -5,6 +5,7 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -13,11 +14,54 @@ namespace LimpiadorRAM.Installer
     static class SetupProgram
     {
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
+            // Verificar permisos de Administrador antes de iniciar la instalacion
+            if (!IsAdministrator())
+            {
+                try
+                {
+                    ProcessStartInfo startInfo = new ProcessStartInfo();
+                    startInfo.UseShellExecute = true;
+                    startInfo.WorkingDirectory = Environment.CurrentDirectory;
+                    startInfo.FileName = Application.ExecutablePath;
+                    startInfo.Verb = "runas"; // Solicita la elevacion oficial de UAC en Windows
+                    if (args != null && args.Length > 0)
+                    {
+                        startInfo.Arguments = string.Join(" ", args);
+                    }
+                    Process.Start(startInfo);
+                }
+                catch
+                {
+                    MessageBox.Show(
+                        "El instalador requiere permisos de Administrador para instalar en Archivos de Programa, programar tareas de inicio y registrar el desinstalador en Windows.",
+                        "Permisos de Administrador Requeridos",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning
+                    );
+                }
+                return;
+            }
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new SetupForm());
+        }
+
+        private static bool IsAdministrator()
+        {
+            try
+            {
+                WindowsIdentity identity = WindowsIdentity.GetCurrent();
+                if (identity == null) return false;
+                WindowsPrincipal principal = new WindowsPrincipal(identity);
+                return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 
@@ -105,7 +149,10 @@ namespace LimpiadorRAM.Installer
             lblDest.AutoSize = true;
             lblDest.ForeColor = Color.FromArgb(203, 213, 225);
 
-            string defaultDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Programs\LimpiadorRAM");
+            string progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            string defaultDir = !string.IsNullOrEmpty(progFiles)
+                ? Path.Combine(progFiles, "LimpiadorRAM")
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Programs\LimpiadorRAM");
 
             _txtPath = new TextBox();
             _txtPath.Location = new Point(24, 112);
@@ -359,6 +406,7 @@ namespace LimpiadorRAM.Installer
                     "@echo off\r\n" +
                     "taskkill /f /im LimpiadorRAM.exe >nul 2>&1\r\n" +
                     "schtasks /delete /tn \"LimpiadorRAM\" /f >nul 2>&1\r\n" +
+                    "reg delete \"HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\LimpiadorRAM\" /f >nul 2>&1\r\n" +
                     "reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\LimpiadorRAM\" /f >nul 2>&1\r\n" +
                     "reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"LimpiadorRAM\" /f >nul 2>&1\r\n" +
                     "del /f /q \"" + Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Limpiador de RAM.lnk") + "\" >nul 2>&1\r\n" +
@@ -373,7 +421,7 @@ namespace LimpiadorRAM.Installer
                     "pause\r\n";
                 File.WriteAllText(uninstallerCmd, uninstContent);
 
-                // 5. Registrar en Windows (Agregar o quitar programas)
+                // 5. Registrar en Windows (Agregar o quitar programas en HKLM y HKCU)
                 RegisterInWindows(installDir, uninstallerCmd);
 
                 // 6. Accesos directos
@@ -462,25 +510,32 @@ namespace LimpiadorRAM.Installer
 
         private void RegisterInWindows(string installDir, string uninstallerCmd)
         {
-            try
+            const string uninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\LimpiadorRAM";
+            Action<RegistryKey> writeEntry = delegate(RegistryKey baseKey)
             {
-                const string uninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\LimpiadorRAM";
-                using (RegistryKey key = Registry.CurrentUser.CreateSubKey(uninstallKey))
+                if (baseKey == null) return;
+                try
                 {
-                    if (key != null)
+                    using (RegistryKey key = baseKey.CreateSubKey(uninstallKey))
                     {
-                        key.SetValue("DisplayName", "Limpiador de RAM");
-                        key.SetValue("DisplayVersion", "1.0.0");
-                        key.SetValue("Publisher", "LimpiadorRAM");
-                        key.SetValue("DisplayIcon", Path.Combine(installDir, @"resources\app.ico"));
-                        key.SetValue("InstallLocation", installDir);
-                        key.SetValue("UninstallString", "\"" + uninstallerCmd + "\"");
-                        key.SetValue("NoModify", 1, RegistryValueKind.DWord);
-                        key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+                        if (key != null)
+                        {
+                            key.SetValue("DisplayName", "Limpiador de RAM");
+                            key.SetValue("DisplayVersion", "1.0.0");
+                            key.SetValue("Publisher", "LimpiadorRAM");
+                            key.SetValue("DisplayIcon", Path.Combine(installDir, @"resources\app.ico"));
+                            key.SetValue("InstallLocation", installDir);
+                            key.SetValue("UninstallString", "\"" + uninstallerCmd + "\"");
+                            key.SetValue("NoModify", 1, RegistryValueKind.DWord);
+                            key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+                        }
                     }
                 }
-            }
-            catch { }
+                catch { }
+            };
+
+            writeEntry(Registry.LocalMachine);
+            writeEntry(Registry.CurrentUser);
         }
 
         private void CreateShortcut(string shortcutPath, string targetPath, string workingDir, string iconPath, string description)

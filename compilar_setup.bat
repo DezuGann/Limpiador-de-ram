@@ -32,6 +32,7 @@ if exist "Setup_LimpiadorRAM.old.exe" (
 )
 
 %CSC% /nologo /target:winexe /optimize+ /platform:anycpu ^
+    /win32manifest:src\Installer\setup.manifest ^
     /win32icon:resources\app.ico ^
     /out:Setup_LimpiadorRAM.exe ^
     /resource:LimpiadorRAM.exe,Payload.LimpiadorRAM.exe ^
