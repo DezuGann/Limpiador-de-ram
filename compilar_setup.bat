@@ -25,8 +25,10 @@ if not exist "LimpiadorRAM.exe" (
 
 echo [2/2] Compilando Setup_LimpiadorRAM.exe con recursos integrados...
 if exist "Setup_LimpiadorRAM.exe" (
+    del /f /q "Setup_LimpiadorRAM.exe" >nul 2>&1
+)
+if exist "Setup_LimpiadorRAM.old.exe" (
     del /f /q "Setup_LimpiadorRAM.old.exe" >nul 2>&1
-    move /y "Setup_LimpiadorRAM.exe" "Setup_LimpiadorRAM.old.exe" >nul 2>&1
 )
 
 %CSC% /nologo /target:winexe /optimize+ /platform:anycpu ^

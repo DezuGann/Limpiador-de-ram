@@ -27,8 +27,10 @@ copy /y "resources\app.ico" "app.ico" >nul 2>&1
 
 echo [2/3] Compilando codigo fuente C# con manifiesto de administrador...
 if exist "LimpiadorRAM.exe" (
+    del /f /q "LimpiadorRAM.exe" >nul 2>&1
+)
+if exist "LimpiadorRAM.old.exe" (
     del /f /q "LimpiadorRAM.old.exe" >nul 2>&1
-    move /y "LimpiadorRAM.exe" "LimpiadorRAM.old.exe" >nul 2>&1
 )
 %CSC% /nologo /target:winexe /optimize+ /platform:anycpu ^
     /win32manifest:src\app.manifest ^
